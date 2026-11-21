@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+APP="${CLAUDE_3P_APP:-/Applications/Claude-3p.app}"
+
+usage() {
+  cat <<EOF
+Usage: claude-3p [--diagnose|--doctor] [options]
+
+  (no args)       Launch Claude-3p in 3P mode
+  --3p / --1p     Pass the deployment mode to Claude
+  --diagnose      Print signature, integrity, patch, entitlement, 3P, VM and TCC diagnostics
+  --diagnose --json
+  --version       Print the bundled Claude version
+  --help          Show this help
+
+Environment:
+  CLAUDE_3P_APP   App path (default /Applications/Claude-3p.app)
+EOF
+}
+
+case "${1:-}" in
+  --diagnose|--doctor|diagnose|doctor)
+    shift
+    exec node "$ROOT/scripts/doctor.mjs" --app "$APP" "$@"
+    ;;
+  --help|-h)
+    usage
+    ;;
+  --version|-V)
+    exec /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist"
+    ;;
+  "")
+    exec open -n "$APP" --args --3p
+    ;;
+  *)
+    exec open -n "$APP" --args "$@"
+    ;;
+esac

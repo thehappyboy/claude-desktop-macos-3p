@@ -1,0 +1,66 @@
+# Patch surface
+
+Target: macOS Claude Desktop `6.6395.1`, output bundle
+`com.anthropic.claudefordesktop.3p` / display name `Claude-3p`.
+`CFBundleName` stays `Claude` because Electron locates its helper apps by that
+name; changing it requires renaming every `Claude Helper*.app`.
+
+The macOS native Computer Use executor is already shipped. The patch does not
+replace it. It changes four minified functions in
+`.vite/build/index.chunk-CEv0BLqc.js`:
+
+| Gate | Upstream behavior | Patched behavior in 3P |
+|---|---|---|
+| rollout | GrowthBook/account rollout can leave `computerUseRollout` unavailable | `supported` on darwin + 3p |
+| enabled | Requires rollout, allowed-apps readability and `chicagoEnabled` | `true` on darwin + 3p; HIPAA still returns false upstream |
+| opted-out | Reports "available but opted out" when the preference is unset | `false` on darwin + 3p |
+| status mapper | Maps the gates to the SPA feature status | `supported` on darwin + 3p |
+| app-scoped mode | Requires GrowthBook `appScopedEnabled` | enabled on macOS 15+ in 3P |
+
+Observed startup line after the patch:
+
+```text
+[custom-3p] 3P mode active { provider: 'gateway' }
+[chicago] GrowthBook chicago_config: raw=undefined → enabled=true ...
+```
+
+Before the patch the same line had `enabled=false`.
+
+## Integrity
+
+Two independent values must match:
+
+1. `ElectronAsarIntegrity["Resources/app.asar"].hash` is the SHA256 of the
+   canonical asar header JSON, not the whole `.asar` file.
+2. Newer Electron builds embed a digest of the whole integrity dictionary in
+   `__DATA_CONST,__asar_integrity` in the Electron Framework binary. The patch
+   recomputes and writes that digest into every architecture slice.
+
+If either value is stale, Electron exits with:
+
+```text
+Failed to get integrity for validatable asar archive: Resources/app.asar
+```
+
+## Signing
+
+Anthropic's entitlements contain their Developer ID team. Keeping them on an
+ad-hoc signature makes launchd reject the app with POSIX error 153. The build
+therefore strips the team-bound keys and preserves each component's other
+entitlements.
+
+`Claude Helper.app` and the main app keep Virtualization; the renderer keeps
+only `allow-jit`; `app-cu-helper` keeps none. Without Virtualization the
+workspace VM reports `entitlement_missing` and shows "Claude's installation
+appears to be invalid or has been modified."
+
+`scripts/setup-signing.sh` creates a local self-signed identity
+`Claude 3P CU Local Signing` in `Claude-3p-CU.keychain-db`. The build uses it
+when present and falls back to ad-hoc otherwise. A stable identity avoids a
+new TCC grant after every rebuild.
+
+Consequences:
+
+- Screen Recording and Accessibility permissions are granted once per signing
+  identity; changing identity requires granting them again.
+- Keychain-backed 1P credentials may be unavailable.
