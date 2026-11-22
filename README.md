@@ -3,6 +3,9 @@
 在 macOS 上从官方 Claude Desktop 构建独立的 3P 分支，包含简体中文界面、
 Computer Use、稳定签名、诊断和更新护栏。
 
+> 非官方项目，与 Anthropic 无隶属、授权或背书关系。本仓库只包含构建脚本和
+> 补丁，不包含 Claude Desktop 应用本体；Claude 是 Anthropic PBC 的商标。
+
 当前验证基线：macOS Claude Desktop `6.28899.6`。
 
 ## 结论
@@ -18,6 +21,7 @@ Computer Use、稳定签名、诊断和更新护栏。
 ```bash
 npm install
 npm test
+claude-3p --check-upstream
 ./scripts/build.sh --app "/Applications/Claude.app"
 ./scripts/verify-build.sh
 node scripts/configure-3p.mjs
@@ -78,6 +82,20 @@ Doctor 还会探测当前生效配置里的网关地址和 `/v1/models`，连接
 3P 模式，但不能证明外部端口仍有服务；连接失败时对照 magpie 的实际监听端口，并运行
 `curl http://127.0.0.1:<port>/v1/models` 验证。
 
+### 上游版本护栏
+
+`.upstream-version` 是唯一的上游验收基线；本项目不为每个 Claude 版本维护独立补丁目录。
+
+```bash
+claude-3p --check-upstream
+claude-3p --check-upstream --offline
+claude-3p --check-upstream --json
+```
+
+检查会对比当前验收基线、官方 `Claude.app`、已安装的 `Claude-3p.app` 和
+Anthropic macOS Squirrel 更新源。新版本出现时返回非零；构建成功后仍需测试和人工验收，
+最后才更新 `.upstream-version`。完整流程见 `docs/upstream.md`。
+
 启动后在 3P 会话中确认：
 
 0. `~/Library/Logs/Claude-3p/main.log` 出现 `3P mode active`、`[chicago] ... enabled=true ... appScoped=true`（rollout 与背景模式门禁）和配置中的 `chicagoEnabled=true`。前者不代表用户开关状态。
@@ -100,10 +118,12 @@ Doctor 还会探测当前生效配置里的网关地址和 `/v1/models`，连接
 - `scripts/verify-build.sh`：校验签名、asar 头哈希、二进制摘要和补丁标记。
 - `scripts/setup-signing.sh`：创建本地自签名代码签名身份。
 - `scripts/configure-3p.mjs`：写入 `chicagoEnabled`、首选模式、`disableAutoUpdates` 并备份 3P 配置。
+- `scripts/upstream-check.mjs`：检查官方 macOS 新版本、源应用、已安装构建和验收基线。
 - `scripts/doctor.sh`：诊断签名、完整性、补丁、entitlements、3P 配置、运行日志、VM 和 TCC 状态。
 - `bin/claude-3p`：CLI 入口；`claude-3p --diagnose` 与参考项目的 `--diagnose` 对齐。
 - `docs/patch-surface.md`：补丁点、完整性机制和签名边界。
 - `docs/testing.md`：测试矩阵、参考项目对比和剩余验收项。
+- `docs/upstream.md`：单补丁集的上游检查、升级和基线更新流程。
 - `dist/build-info.json`：构建版本、源应用和产物哈希。
 
 旧钥匙串 `Claude-3p-CU.keychain-db` 不删除，作为回退；新构建使用

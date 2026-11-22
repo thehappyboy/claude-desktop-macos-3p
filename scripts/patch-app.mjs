@@ -513,6 +513,10 @@ function main() {
     throw new Error(`Not a Claude.app bundle: ${app}`);
   }
   const version = readPlistValue(infoPlist, "CFBundleShortVersionString");
+  const baselinePath = path.join(ROOT, ".upstream-version");
+  const upstreamBaseline = existsSync(baselinePath)
+    ? readFileSync(baselinePath, "utf8").trim() || null
+    : null;
   const bundleId = readPlistValue(infoPlist, "CFBundleIdentifier");
   if (bundleId !== "com.anthropic.claudefordesktop") {
     throw new Error(`Refusing unexpected bundle id: ${bundleId}`);
@@ -520,6 +524,13 @@ function main() {
 
   console.log(`[source] ${app}`);
   console.log(`[version] ${version}`);
+  console.log(`[baseline] ${upstreamBaseline || "<missing>"}`);
+  if (upstreamBaseline && upstreamBaseline !== version) {
+    console.warn(
+      `[baseline] ${version} is not yet validated against ${upstreamBaseline}; ` +
+        "build and test it, then update .upstream-version.",
+    );
+  }
   console.log(`[output] ${out}`);
   console.log(`[identity] ${args.bundleId} / ${args.displayName}`);
 
@@ -637,6 +648,8 @@ function main() {
       source: app,
       output: out,
       version,
+      upstreamBaseline,
+      upstreamBaselineMatch: upstreamBaseline === version,
       bundleId: args.bundleId,
       displayName: args.displayName,
       productName: args.productName,

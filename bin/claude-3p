@@ -12,12 +12,14 @@ APP="${CLAUDE_3P_APP:-/Applications/Claude-3p.app}"
 
 usage() {
   cat <<EOF
-Usage: claude-3p [--diagnose|--doctor] [options]
+Usage: claude-3p [--diagnose|--check-upstream] [options]
 
   (no args)       Launch Claude-3p in 3P mode
   --3p / --1p     Pass the deployment mode to Claude
   --diagnose      Print signature, integrity, patch, entitlement, 3P, VM and TCC diagnostics
   --diagnose --json
+  --check-upstream Compare the official app, installed build and validated baseline
+  --check-upstream --offline
   --version       Print the bundled Claude version
   --help          Show this help
 
@@ -30,6 +32,10 @@ case "${1:-}" in
   --diagnose|--doctor|diagnose|doctor)
     shift
     exec node "$ROOT/scripts/doctor.mjs" --app "$APP" "$@"
+    ;;
+  --check-upstream|check-upstream)
+    shift
+    exec node "$ROOT/scripts/upstream-check.mjs" --app "$APP" "$@"
     ;;
   --help|-h)
     usage

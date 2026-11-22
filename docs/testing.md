@@ -8,11 +8,12 @@ Reference tree: `patrickjaja/claude-desktop-extra` commit `914bb67`
 
 | Layer | Command | Current result |
 |---|---|---|
-| Gate semantics, installed-bundle and config writer | `npm test` | 17/17 pass |
+| Gate semantics, installed-bundle, config writer and upstream checker | `npm test` | 24/24 pass |
 | Bundle signature, entitlements and integrity | `./scripts/verify-build.sh <app>` | pass |
 | Computer Use patch policy and stale-marker checks | `./scripts/verify-build.sh <app>` | pass |
 | Installed app launch | `open -n /Applications/Claude-3p.app --args --3p` | starts in 3P mode |
-| Runtime diagnostic | `claude-3p --diagnose` | 34 pass, 1 warn, 0 fail |
+| Runtime diagnostic | `claude-3p --diagnose` | 36 pass, 0 warn, 0 fail |
+| Upstream baseline and official feed | `claude-3p --check-upstream` | source/build/baseline/latest all `6.28899.6` |
 | TCC | `doctor` reads system and user `TCC.db` | Accessibility and Screen Recording granted; unreadable/missing rows are reported as `unknown`, not denied |
 
 The unit suite covers:
@@ -30,6 +31,8 @@ The unit suite covers:
 - The deployment accessor is discovered from `mP()` and the patch fails closed
   when it cannot be identified.
 - Patch idempotency, stale old-patch rejection and anchor failure.
+- Upstream semver comparison, official Squirrel feed URL/payload parsing, and
+  online/offline baseline assessment.
 - `configure-3p` writes `disableAutoUpdates=true` to the applied config and
   backs up both configuration files.
 - `configure-3p` validates both config files before writing, and rolls the main
@@ -72,7 +75,7 @@ The user-off case was manually confirmed on the installed build on
 | Policy | HIPAA/managed gates preserved | User, managed and allowed-apps checks preserved; 3P HIPAA remains upstream `unrestricted` |
 | Diagnostics | `--diagnose`, status page | `--diagnose` with signature, hashes, source-version, auto-update, gateway reachability and live TCC |
 | Updates | Own GitHub release feed | Auto-updates disabled in the applied 3P config |
-| Tests | 103 feature harnesses, Linux smoke test | 17 semantic/installed-bundle/config tests, bundle verifier, installed launch |
+| Tests | 103 feature harnesses, Linux smoke test | 24 semantic/installed-bundle/config/upstream tests, bundle verifier, installed launch |
 | Profiles | Named Linux profiles and URL routing | Separate 1P/3P identity; no multiple 3P profile isolation |
 | Non-Anthropic models | Main + ion-dist opt-in patch | Out of project scope: magpie owns gateway model mapping; current Claude picker exposes 23 configured models and the gateway endpoint returns 24 |
 | Themes/IDE extras | 27 community patches | Not ported; unrelated to Computer Use |
@@ -91,6 +94,8 @@ ported: the macOS native executor already provides the corresponding path.
 
 - The installed build is `6.28899.6`; later official releases require a clean
   build, anchor re-audit and a new Computer Use acceptance run.
+- Upstream release detection is currently an explicit command, not a scheduled
+  service. A future automation can call `claude-3p --check-upstream --json`.
 - No automated macOS smoke script yet; the launch check is currently a
   documented manual command.
 - URL-scheme ownership is shared with the official app; a router is only

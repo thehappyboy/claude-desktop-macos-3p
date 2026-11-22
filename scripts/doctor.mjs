@@ -4,6 +4,9 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const args = {
   app: "/Applications/Claude-3p.app",
@@ -100,6 +103,7 @@ const asarPath = path.join(app, "Contents", "Resources", "app.asar");
 const framework = path.join(app, "Contents", "Frameworks", "Electron Framework.framework", "Versions", "A", "Electron Framework");
 const ionAsar = path.join(app, "Contents", "Resources", "ion-dist.asar");
 const configPath = path.join(homedir(), "Library", "Application Support", args.profile, "claude_desktop_config.json");
+const baselinePath = path.join(ROOT, ".upstream-version");
 const logsDir = path.join(homedir(), "Library", "Logs", args.profile);
 const mainLog = path.join(logsDir, "main.log");
 const vmLog = path.join(logsDir, "cowork_vm_node.log");
@@ -146,6 +150,22 @@ if (existsSync(sourceInfoPath)) {
   }
 } else {
   warn("upstream source", `official app not found: ${sourceApp}`);
+}
+
+const baseline = existsSync(baselinePath)
+  ? readFileSync(baselinePath, "utf8").trim()
+  : "";
+const builtVersion = info?.CFBundleShortVersionString;
+const sourceVersion = existsSync(sourceInfoPath) ? plist(sourceInfoPath)?.CFBundleShortVersionString : null;
+if (!baseline) {
+  warn("upstream baseline", ".upstream-version is missing");
+} else if (builtVersion !== baseline || (sourceVersion && sourceVersion !== baseline)) {
+  warn(
+    "upstream baseline",
+    `validated=${baseline}, source=${sourceVersion || "<missing>"}, built=${builtVersion || "<missing>"}; rebuild, test and update .upstream-version`,
+  );
+} else {
+  pass("upstream baseline", baseline);
 }
 
 if (existsSync(ionAsar)) {

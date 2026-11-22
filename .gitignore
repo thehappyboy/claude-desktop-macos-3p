@@ -3,5 +3,6 @@ node_modules/
 .DS_Store
 *.log
 Claude.app/
+Claude-backup.app/
 __pycache__/
 *.pyc
