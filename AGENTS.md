@@ -37,6 +37,8 @@ Use the full term **Computer Use** in code comments, docs and reports.
 - **One current patch set.** `.upstream-version` names the accepted upstream
   baseline. Do not add per-version patch directories or copy an `app.asar`
   between Claude releases.
+- **Source-only publication.** GitHub publishes scripts, tests and docs. Keep
+  app bundles, DMGs, build artifacts and release-signing material local.
 - **Integrity is generated.** Let `scripts/patch-app.mjs` update the asar header
   hash and Electron integrity dictionary. Do not hand-edit either value.
 - **Identity is stable.** Keep bundle id

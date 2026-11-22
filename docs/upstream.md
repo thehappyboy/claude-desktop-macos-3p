@@ -23,6 +23,10 @@ Use `--json` for machine-readable output.
 Exit code `0` means the source, build and baseline are aligned. Exit code `1`
 means a new source version, stale build or missing baseline needs action.
 
+Upstream updates are manual. Download the official Claude Desktop app when you
+want to upgrade, then run the local flow below. This repository does not run a
+scheduled build or automatically accept a release.
+
 ## When a new version appears
 
 1. Replace the local official `Claude.app` with the new release.
@@ -73,3 +77,4 @@ behavior; the Doctor and real-app Computer Use acceptance still apply.
 - Keeping parallel patch trees for every upstream release.
 - Treating the Linux reference project's `.upstream-version` as a macOS target.
 - Automatically accepting a new version just because the build passed.
+- Publishing `Claude-3p.app`, a DMG or an installer from CI.

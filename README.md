@@ -36,6 +36,12 @@ open "dist/Claude-3p.app" --args --3p
 `configLibrary/<appliedId>.json`。如果首次运行时还没有 `configLibrary`，先启动一次
 Claude-3p，再重新运行该命令。
 
+### 发布范围
+
+本仓库只发布构建工具、补丁、测试和文档，不发布 Claude Desktop 应用本体、
+`Claude-3p.app`、DMG、安装包或签名产物。项目不提供 CI 或远程构建；完整构建、
+签名和运行验收都在本机完成。由你手动下载官方 `Claude.app`，再运行本地流程。
+
 ## 中文界面
 
 构建时会安装简体中文资源，但**不强制切换语言**。在左下角账号菜单选择
