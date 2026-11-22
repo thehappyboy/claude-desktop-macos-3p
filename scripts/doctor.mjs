@@ -60,6 +60,7 @@ function lastMatch(text, re) {
 const infoPlist = path.join(app, "Contents", "Info.plist");
 const asarPath = path.join(app, "Contents", "Resources", "app.asar");
 const framework = path.join(app, "Contents", "Frameworks", "Electron Framework.framework", "Versions", "A", "Electron Framework");
+const ionAsar = path.join(app, "Contents", "Resources", "ion-dist.asar");
 const configPath = path.join(homedir(), "Library", "Application Support", args.profile, "claude_desktop_config.json");
 const logsDir = path.join(homedir(), "Library", "Logs", args.profile);
 const mainLog = path.join(logsDir, "main.log");
@@ -90,6 +91,32 @@ if (info) {
   } else {
     warn("bundle name", `got ${info.CFBundleName || "<missing>"}`);
   }
+}
+
+if (existsSync(ionAsar)) {
+  const bytes = readFileSync(ionAsar);
+  const headerSize = bytes.readUInt32LE(12);
+  const header = JSON.parse(bytes.subarray(16, 16 + headerSize).toString("utf8"));
+  function has(entry) {
+    let node = header;
+    for (const part of entry.split("/")) {
+      node = node?.files?.[part];
+      if (!node) return false;
+    }
+    return !node.files;
+  }
+  if (has("i18n/zh-Hans.json") && has("i18n/dynamic/zh-Hans.json")) {
+    pass("Chinese UI resources", "zh-Hans + dynamic installed");
+  } else {
+    fail("Chinese UI resources", "zh-Hans catalog is missing from ion-dist.asar");
+  }
+  if (existsSync(path.join(app, "Contents", "Resources", "zh-Hans.lproj", "Localizable.strings"))) {
+    pass("Chinese desktop shell", "Localizable.strings present");
+  } else {
+    warn("Chinese desktop shell", "Localizable.strings missing");
+  }
+} else {
+  warn("Chinese UI resources", "ion-dist.asar not found");
 }
 
 const running = run("pgrep", ["-f", `${app}/Contents/MacOS/Claude`]);

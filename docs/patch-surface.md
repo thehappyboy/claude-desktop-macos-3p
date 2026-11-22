@@ -64,3 +64,16 @@ Consequences:
 - Screen Recording and Accessibility permissions are granted once per signing
   identity; changing identity requires granting them again.
 - Keychain-backed 1P credentials may be unavailable.
+
+## Chinese UI
+
+The build vendors the MIT-licensed `javaht/claude-desktop-zh-cn` resources and
+patches `ion-dist.asar` without forcing a locale:
+
+- adds `zh-Hans` to the frontend language whitelist;
+- merges 37,495 translated frontend entries (7,784 fall back to English);
+- installs the 51-entry dynamic catalog and official desktop `zh-Hans` shell;
+- leaves the built-in Language menu in control.
+
+The optional 4,068 hardcoded-string replacements are off by default because
+they scan all frontend JS files; set `CLAUDE_ZH_HARDCODED=1` to enable them.

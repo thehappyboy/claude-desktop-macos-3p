@@ -29,7 +29,10 @@ function parseArgs(argv) {
     dryRun: false,
     bundleId: "com.anthropic.claudefordesktop.3p",
     displayName: "Claude-3p",
+    productName: "Claude",
     identity: "auto",
+    i18n: true,
+    lang: "zh-Hans",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -37,7 +40,10 @@ function parseArgs(argv) {
     else if (arg === "--out") out.out = path.resolve(argv[++i]);
     else if (arg === "--bundle-id") out.bundleId = argv[++i];
     else if (arg === "--display-name") out.displayName = argv[++i];
+    else if (arg === "--product-name") out.productName = argv[++i];
     else if (arg === "--identity") out.identity = argv[++i];
+    else if (arg === "--no-i18n") out.i18n = false;
+    else if (arg === "--lang") out.lang = argv[++i];
     else if (arg === "--no-sign") out.sign = false;
     else if (arg === "--dry-run") out.dryRun = true;
     else if (arg === "-h" || arg === "--help") out.help = true;
@@ -54,7 +60,10 @@ function usage() {
     "  --out <Claude.app>   Output app (default dist/Claude-3p.app)",
     "  --bundle-id <id>     Output bundle id (default com.anthropic.claudefordesktop.3p)",
     "  --display-name <s>   Output display name (default Claude-3p)",
+    "  --product-name <s>   Electron product name (default Claude; keeps the existing keychain item)",
     "  --identity <name>    Signing identity (default auto; '-' means ad-hoc)",
+    "  --lang <code>        UI language resources (default zh-Hans)",
+    "  --no-i18n            Do not install Chinese UI resources",
     "  --dry-run            Inspect and report only; write nothing",
     "  --no-sign            Do not re-sign the output app",
     "  -h, --help           Show this help",
@@ -116,38 +125,33 @@ function electronFrameworkBinary(appPath) {
 }
 
 function patchIntegrityDictionaryDigest(appPath, originalIntegrity, integrity) {
-  const originalDigest = Buffer.from(
-    integrityDictionaryDigest(originalIntegrity),
-    "hex",
-  );
+  const oldDigest = Buffer.from(integrityDictionaryDigest(originalIntegrity), "hex");
   const wanted = Buffer.from(integrityDictionaryDigest(integrity), "hex");
   const binary = path.join(appPath, "Contents", "Frameworks", "Electron Framework.framework", "Versions", "A", "Electron Framework");
   const file = existsSync(binary) ? binary : electronFrameworkBinary(appPath);
   const bytes = readFileSync(file);
-  const slots = [];
-  let at = 0;
-  while ((at = bytes.indexOf(originalDigest, at)) !== -1) {
-    const slot = at - 34;
-    if (slot < 0 || bytes[slot + 32] !== 1 || bytes[slot + 33] !== 1) {
+  const slots = new Set();
+  for (const digest of [oldDigest, wanted]) {
+    let at = 0;
+    while ((at = bytes.indexOf(digest, at)) !== -1) {
+      const slot = at - 34;
+      if (slot >= 0 && bytes[slot + 32] === 1 && bytes[slot + 33] === 1) {
+        const sentinel = bytes.subarray(slot, slot + 32);
+        if (sentinel.every((byte) => byte >= 0x20 && byte <= 0x7e)) {
+          slots.add(slot);
+          wanted.copy(bytes, at);
+        }
+      }
       at += 1;
-      continue;
     }
-    const sentinel = bytes.subarray(slot, slot + 32);
-    if (!sentinel.every((byte) => byte >= 0x20 && byte <= 0x7e)) {
-      at += 1;
-      continue;
-    }
-    slots.push(slot);
-    wanted.copy(bytes, at);
-    at += 32;
   }
-  if (slots.length === 0) {
+  if (slots.size === 0) {
     throw new Error(
       "Electron integrity dictionary slot not found; this Electron build may predate the dictionary digest.",
     );
   }
   writeFileSync(file, bytes);
-  return { file, slots, digest: wanted.toString("hex") };
+  return { file, slots: [...slots], digest: wanted.toString("hex") };
 }
 
 function findBundleJs(root) {
@@ -277,6 +281,14 @@ function setAsarHash(plistPath, key, hash) {
     "-c",
     `Set :ElectronAsarIntegrity:${key}:hash ${hash}`,
     plistPath,
+  ], { stdio: "inherit" });
+}
+
+function installI18n(appPath, lang) {
+  execFileSync("python3", [
+    path.join(ROOT, "scripts", "patch-i18n.py"),
+    appPath,
+    lang,
   ], { stdio: "inherit" });
 }
 
@@ -533,11 +545,24 @@ function main() {
       console.log(`[patch] ${hit.file}: ${hit.patches.join(", ")}`);
     }
 
+    const packagePath = path.join(unpacked, "package.json");
+    const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+    packageJson.productName = args.productName;
+    writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+    console.log(`[identity] Electron productName ${args.productName}`);
+
     const rebuilt = path.join(out, "Contents", "Resources", "app.asar");
     runAsar(["pack", unpacked, rebuilt], ROOT);
     const hash = asarHeaderHash(rebuilt);
     setAsarHash(outPlist, "Resources/app.asar", hash);
     console.log(`[integrity] app.asar header sha256 ${hash}`);
+
+    if (args.i18n) {
+      if (args.lang !== "zh-Hans") {
+        throw new Error(`Only zh-Hans is supported for --lang, got ${args.lang}`);
+      }
+      installI18n(out, args.lang);
+    }
 
     const integrity = JSON.parse(execFileSync("/usr/bin/plutil", [
       "-convert",
@@ -569,6 +594,8 @@ function main() {
       version,
       bundleId: args.bundleId,
       displayName: args.displayName,
+      productName: args.productName,
+      i18n: args.i18n ? args.lang : null,
       builtAt: new Date().toISOString(),
       appAsarIntegrityHash: hash,
       integrityDictionaryDigest: digest.digest,

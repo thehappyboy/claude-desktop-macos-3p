@@ -25,6 +25,19 @@ open "dist/Claude-3p.app" --args --3p
 分支使用独立 bundle id `com.anthropic.claudefordesktop.3p` 和显示名 `Claude-3p`，因此 macOS 的屏幕录制/辅助功能授权不会和原版 Claude 共用。
 已安装副本：`/Applications/Claude-3p.app`。
 
+## 中文界面
+
+构建时会安装简体中文资源，但**不强制切换语言**。在左下角账号菜单选择
+`Language` → `简体中文` 即可切换；English 仍是默认选项。
+
+- 3P 前端词表：37,495 条中文，7,784 条缺失 key 保留英文。
+- 动态词表：51/51。
+- 桌面壳词表：官方 `zh-Hans` 为基础。
+- 可选硬编码替换：`CLAUDE_ZH_HARDCODED=1` 构建时启用，默认关闭以避免长时间扫描。
+- 资源来源：`javaht/claude-desktop-zh-cn`，MIT；见 `THIRD_PARTY_NOTICES.md`。
+
+新 bundle id 首次访问原版 “Claude Safe Storage” 时，macOS 会询问一次钥匙串权限；选择“始终允许”并输入登录密码即可继续使用原有网关密钥，不需要重新输入 API Key。此后使用同一签名身份重建不会重复询问。
+
 首次建议先创建本地签名身份，之后重建不会因 ad-hoc cdhash 变化而反复失效：
 
 ```bash

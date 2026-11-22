@@ -6,6 +6,7 @@ import { integrityDictionaryDigest } from "./patch-app.mjs";
 
 const app = path.resolve(process.argv[2] || "");
 const asarPath = path.join(app, "Contents", "Resources", "app.asar");
+const ionAsarPath = path.join(app, "Contents", "Resources", "ion-dist.asar");
 const plistPath = path.join(app, "Contents", "Info.plist");
 const framework = path.join(
   app,
@@ -16,6 +17,20 @@ const framework = path.join(
   "A",
   "Electron Framework",
 );
+
+function asarEntry(archive, wanted) {
+  const bytes = readFileSync(archive);
+  const headerSize = bytes.readUInt32LE(12);
+  const header = JSON.parse(bytes.subarray(16, 16 + headerSize).toString("utf8"));
+  let node = header;
+  for (const part of wanted.split("/")) {
+    node = node?.files?.[part];
+    if (!node) return null;
+  }
+  if (node.files || node.unpacked) return null;
+  const start = 16 + headerSize + Number(node.offset || 0);
+  return bytes.subarray(start, start + Number(node.size || 0));
+}
 
 const bytes = readFileSync(asarPath);
 const headerSize = bytes.readUInt32LE(12);
@@ -51,6 +66,29 @@ if (
 }
 if (existsSync(path.join(app, "Contents", "embedded.provisionprofile"))) {
   throw new Error("stale embedded.provisionprofile is still present");
+}
+
+for (const entry of ["i18n/zh-Hans.json", "i18n/dynamic/zh-Hans.json"]) {
+  if (!asarEntry(ionAsarPath, entry)) {
+    throw new Error(`ion-dist.asar is missing ${entry}`);
+  }
+}
+const zh = JSON.parse(asarEntry(ionAsarPath, "i18n/zh-Hans.json").toString("utf8"));
+if (Object.keys(zh).length < 1000) {
+  throw new Error(`ion-dist zh-Hans catalog is unexpectedly small (${Object.keys(zh).length})`);
+}
+const dynamicZh = JSON.parse(
+  asarEntry(ionAsarPath, "i18n/dynamic/zh-Hans.json").toString("utf8"),
+);
+if (Object.keys(dynamicZh).length < 1) {
+  throw new Error("ion-dist dynamic zh-Hans catalog is empty");
+}
+const shared = asarEntry(ionAsarPath, "assets/v1/shared-153-BdmJCTc6.js");
+if (!shared || !shared.toString("utf8").includes('"zh-Hans"')) {
+  throw new Error("ion-dist language whitelist does not include zh-Hans");
+}
+if (!existsSync(path.join(app, "Contents", "Resources", "zh-Hans.lproj", "Localizable.strings"))) {
+  throw new Error("desktop zh-Hans Localizable.strings is missing");
 }
 
 for (const name of [
@@ -121,3 +159,4 @@ console.log(`asar header: ${headerHash}`);
 console.log(`dictionary: ${digest}`);
 console.log("virtualization entitlement: present");
 console.log(`bundle: ${plist.CFBundleIdentifier} / ${plist.CFBundleDisplayName}`);
+console.log(`i18n: zh-Hans (${Object.keys(zh).length} frontend entries, ${Object.keys(dynamicZh).length} dynamic entries)`);
