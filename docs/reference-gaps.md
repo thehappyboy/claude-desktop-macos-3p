@@ -5,8 +5,9 @@ Compared with `patrickjaja/claude-desktop-extra` and the macOS 3P fork note.
 ## Already aligned
 
 - Three Computer Use gates patched in `app.asar` (rollout, feature status and
-  app-scoped mode). User opt-out, managed `computerUseEnabled` and unreadable
-  allowed-apps policies stay in front of the forced rollout.
+  app-scoped mode). User opt-out, managed `computerUseEnabled`, unreadable
+  allowed-apps and unreadable denied-apps policies stay in front of the forced
+  rollout.
 - `ElectronAsarIntegrity` header hash and the Electron Framework integrity
   dictionary digest are recomputed.
 - Non-team entitlements are preserved per component, including
@@ -31,7 +32,7 @@ Compared with `patrickjaja/claude-desktop-extra` and the macOS 3P fork note.
 | P0 | Helper identity | Not handled in the note | Resolved: helper bundle ids are `.3p.helper*` |
 | P0 | Stale `embedded.provisionprofile` | Not handled in the note | Resolved: removed from the output bundle |
 | P0 | Minimal nested entitlements | Linux has no equivalent | Resolved: nested components are signed with their own entitlements; main app is signed last without `--deep` |
-| P0 | Policy-preserving Computer Use enablement | Linux patch keeps the HIPAA/managed gate and re-checks it per tool call | Resolved at the enablement gate: 3P forces only the GrowthBook rollout; user off, managed `computerUseEnabled=false` and unreadable allowed-apps still return false. 3P HIPAA remains upstream `unrestricted`; a per-call check is still a separate decision |
+| P0 | Policy-preserving Computer Use enablement | Linux patch keeps the HIPAA/managed gate and re-checks it per tool call | Resolved at the enablement gate: 3P forces only the GrowthBook rollout; user off, managed `computerUseEnabled=false`, and unreadable allowed-apps/denied-apps still return false. 3P HIPAA remains upstream `unrestricted`; a per-call check is still a separate decision |
 | P1 | Upstream version tracking | Builds from the official apt repo, with version baselines | Partially resolved: `doctor` compares `/Applications/Claude.app` with the built app; no automatic upstream feed |
 | P1 | End-to-end smoke test | CI builds, launches and checks the app | Partially resolved: the installed bundle launches and logs the Computer Use rollout gate; permission re-grant, multi-monitor and real tool-call checks remain a manual acceptance matrix |
 | P1 | Doctor / diagnostics | `--diagnose`, status page, logs | Resolved: `claude-3p --diagnose` covers signature, hashes, patches, entitlements, 3P config, source-version delta, auto-update state, VM and Computer Use logs and live TCC state; `--json` for machine use |

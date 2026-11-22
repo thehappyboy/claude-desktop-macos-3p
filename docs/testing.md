@@ -1,32 +1,37 @@
 # Testing and reference comparison
 
 Tested on 2026-11-22 against macOS Claude Desktop `6.6395.1`.
-Reference tree: `patrickjaja/claude-desktop-extra` commit `f2f8c6e`
-(Linux upstream baseline `6.28899.2`).
+Reference tree: `patrickjaja/claude-desktop-extra` commit `914bb67`
+(Linux upstream baseline `6.28899.6`; Homebrew macOS cask is also `6.28899.6`).
 
 ## Test layers
 
 | Layer | Command | Current result |
 |---|---|---|
-| Gate semantics and config writer | `npm test` | 12/12 pass |
+| Gate semantics, installed-bundle and config writer | `npm test` | 16/16 pass |
 | Bundle signature, entitlements and integrity | `./scripts/verify-build.sh <app>` | pass |
 | Computer Use patch policy and stale-marker checks | `./scripts/verify-build.sh <app>` | pass |
 | Installed app launch | `open -n /Applications/Claude-3p.app --args --3p` | starts in 3P mode |
 | Runtime diagnostic | `claude-3p --diagnose` | 31 pass, 3 warn after signing-identity migration; re-grant pending |
-| TCC | `doctor` reads `TCC.db` | reset when moving to `Claude-3p Signing`; Accessibility and Screen Recording must be granted again |
+| TCC | `doctor` reads system and user `TCC.db` | reset when moving to `Claude-3p Signing`; unreadable/missing rows are reported as `unknown`, not denied |
 
 The unit suite covers:
 
 - 3P rollout enabled while `chicagoEnabled` remains required.
 - User opt-out: `GP()` false, `iBr()` true.
 - Managed `computerUseEnabled=false`: rollout and enabled gates false.
-- Unreadable allowed-apps settings: fail closed.
+- Unreadable allowed-apps and denied-apps settings: fail closed, and the
+  status mapper does not report `supported`.
+- The installed app.asar's real `WP()` and `Tsi()` reject `wzr()=false`
+  (denied-apps unreadable) and do not report `supported`.
 - HIPAA remains a deny when the enabled gate reports it.
 - App-scoped mode is enabled only on macOS 15+ in 3P.
 - 1P remains untouched by the 3P patch.
 - Patch idempotency, stale old-patch rejection and anchor failure.
 - `configure-3p` writes `disableAutoUpdates=true` to the applied config and
   backs up both configuration files.
+- `configure-3p` validates both config files before writing, and rolls the main
+  file back when the applied config cannot be written.
 
 `verify-build.sh` additionally checks the actual minified main chunk for:
 
@@ -65,7 +70,7 @@ The user-off case was manually confirmed on the installed build on
 | Policy | HIPAA/managed gates preserved | User, managed and allowed-apps checks preserved; 3P HIPAA remains upstream `unrestricted` |
 | Diagnostics | `--diagnose`, status page | `--diagnose` with signature, hashes, source-version, auto-update and live TCC |
 | Updates | Own GitHub release feed | Auto-updates disabled in the applied 3P config |
-| Tests | 103 feature harnesses, Linux smoke test | 12 semantic/config tests, bundle verifier, installed launch |
+| Tests | 103 feature harnesses, Linux smoke test | 16 semantic/installed-bundle/config tests, bundle verifier, installed launch |
 | Profiles | Named Linux profiles and URL routing | Separate 1P/3P identity; no multiple 3P profile isolation |
 | Non-Anthropic models | Main + ion-dist opt-in patch | Out of project scope: magpie owns gateway model mapping; current gateway returns 23 models and Claude accepts all 23 |
 | Themes/IDE extras | 27 community patches | Not ported; unrelated to Computer Use |
@@ -82,6 +87,9 @@ ported: the macOS native executor already provides the corresponding path.
 
 ## Remaining gaps
 
+- The installed build is `6.6395.1`; the verified Homebrew macOS cask is
+  `6.28899.6`. Upgrading requires a clean build, anchor re-audit and a new
+  Computer Use acceptance run.
 - No automated macOS smoke script yet; the launch check is currently a
   documented manual command.
 - URL-scheme ownership is shared with the official app; a router is only

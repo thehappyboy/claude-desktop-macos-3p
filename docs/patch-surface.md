@@ -11,15 +11,15 @@ replace it. It changes three minified functions in
 
 | Gate | Upstream behavior | Patched behavior in 3P |
 |---|---|---|
-| rollout | GrowthBook/account rollout can leave `computerUseRollout` unavailable | force the rollout answer on darwin + 3p after the managed `computerUseEnabled` and allowed-apps checks |
-| status mapper | Maps the gates to the SPA feature status | return `supported` on darwin + 3p after the managed-settings failure branch |
+| rollout | GrowthBook/account rollout can leave `computerUseRollout` unavailable | force the rollout answer on darwin + 3p after the managed `computerUseEnabled`, allowed-apps and denied-apps checks |
+| status mapper | Maps the gates to the SPA feature status | return `supported` on darwin + 3p only when the allowed-apps and denied-apps policy readers are readable |
 | app-scoped mode | Requires GrowthBook `appScopedEnabled` | enabled on macOS 15+ in 3P |
 
 `isComputerUseEnabled` (`GP`) and `isComputerUseAvailableButOptedOut` (`iBr`) are
 not replaced. They continue to require `chicagoEnabled`; the settings UI sees
 the opt-out state instead of a forced-on state. The managed
-`computerUseEnabled=false` and unreadable allowed-apps policies remain in front
-of the forced rollout.
+`computerUseEnabled=false`, unreadable allowed-apps and unreadable denied-apps
+policies remain in front of the forced rollout.
 
 Upstream's 3P deployment treats the Cowork HIPAA gate as `unrestricted`. This
 patch neither changes nor strengthens that upstream decision; an organization

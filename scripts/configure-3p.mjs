@@ -35,22 +35,18 @@ function main() {
   if (!existsSync(config)) {
     throw new Error(`3P config not found: ${config}`);
   }
-  const data = JSON.parse(readFileSync(config, "utf8"));
+  const mainBytes = readFileSync(config);
+  const data = JSON.parse(mainBytes.toString("utf8"));
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error(`${config} must contain a JSON object`);
+  }
   const preferences = data.preferences && typeof data.preferences === "object"
     ? data.preferences
     : {};
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "");
-  const backup = `${config}.bak-${stamp}`;
-  writeFileSync(backup, readFileSync(config), { mode: 0o600 });
   preferences.chicagoEnabled = true;
   preferences.chicagoAutoUnhide = true;
   preferences.chicagoPreferredMode = args.mode;
   data.preferences = preferences;
-  writeFileSync(config, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-  execFileSync("/bin/chmod", ["600", config]);
-  console.log(`[configure] ${config}`);
-  console.log(`[configure] chicagoEnabled=true chicagoPreferredMode=${args.mode}`);
-  console.log(`[configure] backup ${backup}`);
 
   // The 3P SPA keeps its applied inference profile in configLibrary, not in
   // claude_desktop_config.json. disableAutoUpdates must be written there or a
@@ -58,10 +54,9 @@ function main() {
   const configLibrary = path.join(path.dirname(config), "configLibrary");
   const metaPath = path.join(configLibrary, "_meta.json");
   if (!existsSync(metaPath)) {
-    console.warn(
-      `[configure] ${metaPath} not found; launch Claude-3p once, then rerun this command to disable auto-updates`,
+    throw new Error(
+      `${metaPath} not found; launch Claude-3p once, then rerun this command to disable auto-updates`,
     );
-    return;
   }
 
   let meta;
@@ -79,18 +74,47 @@ function main() {
     throw new Error(`Applied 3P config not found: ${appliedConfig}`);
   }
 
-  const appliedBackup = `${appliedConfig}.bak-${stamp}`;
   const appliedBytes = readFileSync(appliedConfig);
-  writeFileSync(appliedBackup, appliedBytes, { mode: 0o600 });
   let applied;
   try {
     applied = JSON.parse(appliedBytes.toString("utf8"));
   } catch (error) {
     throw new Error(`Could not parse ${appliedConfig}: ${error.message}`);
   }
+  if (!applied || typeof applied !== "object" || Array.isArray(applied)) {
+    throw new Error(`${appliedConfig} must contain a JSON object`);
+  }
   applied.disableAutoUpdates = true;
-  writeFileSync(appliedConfig, `${JSON.stringify(applied, null, 2)}\n`, { mode: 0o600 });
-  execFileSync("/bin/chmod", ["600", appliedConfig]);
+
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "");
+  const backup = `${config}.bak-${stamp}`;
+  const appliedBackup = `${appliedConfig}.bak-${stamp}`;
+  writeFileSync(backup, mainBytes, { mode: 0o600 });
+  writeFileSync(appliedBackup, appliedBytes, { mode: 0o600 });
+
+  try {
+    writeFileSync(config, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    writeFileSync(appliedConfig, `${JSON.stringify(applied, null, 2)}\n`, { mode: 0o600 });
+    execFileSync("/bin/chmod", ["600", config]);
+    execFileSync("/bin/chmod", ["600", appliedConfig]);
+  } catch (error) {
+    for (const [file, bytes] of [
+      [config, mainBytes],
+      [appliedConfig, appliedBytes],
+    ]) {
+      try {
+        writeFileSync(file, bytes, { mode: 0o600 });
+        execFileSync("/bin/chmod", ["600", file]);
+      } catch {
+        // Best-effort rollback; the original error is still the useful one.
+      }
+    }
+    throw error;
+  }
+
+  console.log(`[configure] ${config}`);
+  console.log(`[configure] chicagoEnabled=true chicagoPreferredMode=${args.mode}`);
+  console.log(`[configure] backup ${backup}`);
   console.log(`[configure] ${appliedConfig}`);
   console.log("[configure] disableAutoUpdates=true");
   console.log(`[configure] backup ${appliedBackup}`);

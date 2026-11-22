@@ -207,18 +207,18 @@ export function patchSource(source) {
   const applied = [];
 
   // isComputerUseRolledOut: force the GrowthBook rollout part in 3P on macOS.
-  // uIr() (managed computerUseEnabled) and eBr() (allowed-apps readability)
-  // still run first, so policy denials keep Computer Use off.
+  // uIr() (managed computerUseEnabled), eBr() (allowed-apps readability) and
+  // wzr() (denied-apps readability) still run first, so policy denials keep
+  // Computer Use off.
   {
     const id = "rollout";
     const pattern =
       /(function [\w$]+\([\w$]+=\{\}\)\{if\(![\w$]+\(\)\|\|[\w$]+\(\)\)return\s*!1;)(if\([\w$]+\(\)\)return\s*!0;)/;
     const result = patchOnce(next, id, pattern, (whole, head, gate) => {
-      const forced = gate.replace(
-        /\)return\s*!0;/,
-        `||(process.platform==="darwin"&&K().type==="3p"))return!0;`,
+      return (
+        `${head}/*${MARKER}_${id}*/${gate}` +
+        `if(process.platform==="darwin"&&K().type==="3p"){if(!wzr())return!1;return!0;}`
       );
-      return `${head}/*${MARKER}_${id}*/${forced}`;
     });
     next = result.source;
     if (result.applied) applied.push(id);
@@ -233,7 +233,9 @@ export function patchSource(source) {
       /(function [\w$]+\([\w$]+\)\{)(if\(![\w$]+\(\)\)return [\w$]+\(\)\?\{status:["'`]unsupported["'`][\s\S]*?;)(?=let )/;
     const result = patchOnce(next, id, pattern, (whole, head, managedCheck) =>
       `${head}/*${MARKER}_${id}*/${managedCheck}` +
-      `if(process.platform==="darwin"&&K().type==="3p")return{status:"supported"};`,
+      `if(process.platform==="darwin"&&K().type==="3p"){` +
+      `if(!eBr()&&wzr())return{status:"supported"};` +
+      `return{status:"unsupported",reason:"Computer use is off because its allowed-apps or denied-apps settings could not be read. Restart the app to read them again.",unsupportedCode:"unknown"};}`,
     );
     next = result.source;
     if (result.applied) applied.push(id);

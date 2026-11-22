@@ -64,15 +64,35 @@ function lastMatch(text, re) {
   return found;
 }
 function tccAuth(service, client) {
-  const db = "/Library/Application Support/com.apple.TCC/TCC.db";
-  if (!existsSync(db)) return null;
-  const out = run("/usr/bin/sqlite3", [
-    db,
-    `select auth_value from access where service='${service}' and client='${client}' order by last_modified desc limit 1;`,
-  ]);
-  if (out === null || out === "") return null;
-  const value = Number(out);
-  return Number.isInteger(value) ? value : null;
+  const dbs = [
+    "/Library/Application Support/com.apple.TCC/TCC.db",
+    path.join(homedir(), "Library", "Application Support", "com.apple.TCC", "TCC.db"),
+  ];
+  let result = { state: "unknown", detail: "TCC database not found" };
+  for (const db of dbs) {
+    if (!existsSync(db)) continue;
+    const probe = spawnSync("/usr/bin/sqlite3", [
+      db,
+      `select auth_value from access where service='${service}' and client='${client}' order by last_modified desc limit 1;`,
+    ], { encoding: "utf8" });
+    if (probe.error || probe.status !== 0) {
+      if (result.state === "unknown") result = { state: "unknown", detail: "TCC database unreadable" };
+      continue;
+    }
+    const value = String(probe.stdout || "").trim();
+    if (value === "") {
+      if (result.state === "unknown") result = { state: "unknown", detail: "no TCC row" };
+      continue;
+    }
+    const auth = Number(value);
+    if (auth === 2) return { state: "granted", detail: "TCC" };
+    if (auth === 0) {
+      result = { state: "denied", detail: "TCC" };
+      continue;
+    }
+    result = { state: "unknown", detail: `unexpected auth_value=${value}` };
+  }
+  return result;
 }
 
 const infoPlist = path.join(app, "Contents", "Info.plist");
@@ -307,9 +327,9 @@ if (/Virtualization not available|entitlement_missing/i.test(vm)) fail("workspac
 const swift = tail(swiftLog);
 const bundleId = info?.CFBundleIdentifier || "com.anthropic.claudefordesktop.3p";
 const a11yTcc = tccAuth("kTCCServiceAccessibility", bundleId);
-if (a11yTcc === 2) {
+if (a11yTcc.state === "granted") {
   pass("accessibility", "granted (TCC)");
-} else if (a11yTcc === 0) {
+} else if (a11yTcc.state === "denied") {
   warn("accessibility", "denied (TCC); grant it in System Settings");
 } else {
   const a11y = lastMatch(
@@ -317,22 +337,24 @@ if (a11yTcc === 2) {
     /\[Hotkey\][^\n]*Accessibility permissions detected|\[Hotkey\][^\n]*No accessibility permissions/g,
   );
   if (a11y) {
-    if (a11y[0].includes("detected")) pass("accessibility", "granted (from app log; TCC unreadable)");
-    else warn("accessibility", "not granted (from app log; TCC unreadable)");
+    warn(
+      "accessibility",
+      `unknown (${a11yTcc.detail}); app log ${a11y[0].includes("detected") ? "says granted" : "says not granted"}`,
+    );
   } else {
-    warn("accessibility", "not in TCC and no status in app log");
+    warn("accessibility", `unknown (${a11yTcc.detail}); no status in app log`);
   }
 }
 
 const screenTcc = tccAuth("kTCCServiceScreenCapture", bundleId);
-if (screenTcc === 2) {
+if (screenTcc.state === "granted") {
   pass("screen recording", "granted (TCC)");
-} else if (screenTcc === 0) {
+} else if (screenTcc.state === "denied") {
   warn("screen recording", "denied (TCC); grant it in System Settings");
 } else if (/screen recording|ScreenCapture|screen recording permissions/i.test(main)) {
-  pass("screen recording", "status found in app log (TCC unreadable)");
+  warn("screen recording", `unknown (${screenTcc.detail}); app log mentions screen recording`);
 } else {
-  warn("screen recording", "not in TCC and not reported by app log");
+  warn("screen recording", `unknown (${screenTcc.detail}); no status in app log`);
 }
 
 const fails = checks.filter((c) => c.status === "FAIL").length;

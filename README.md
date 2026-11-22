@@ -6,7 +6,7 @@ Computer Use、稳定签名、诊断和更新护栏。
 ## 结论
 
 - 不重写 Computer Use 执行器。官方 macOS 包已经带原生执行器和 `app-cu-helper`。
-- 只强制 3P 的 GrowthBook rollout、状态映射和 app-scoped 三处；用户开关、设备管理策略和 allowed-apps 可读性检查仍然保留。
+- 只强制 3P 的 GrowthBook rollout、状态映射和 app-scoped 三处；用户开关、设备管理策略、allowed-apps 和 denied-apps 可读性检查仍然保留。
 - 输出是独立 `.app`，不覆盖 `/Applications/Claude.app`。
 - 修改 `app.asar` 后必须同步 asar 头哈希和 Electron 二进制里的完整性字典摘要。
 - 首次从原版或 ad-hoc 版切换签名身份时，macOS 的“屏幕录制”和“辅助功能”授权会失效；使用本地签名身份后，同一 bundle id 的重建可复用授权。
@@ -83,7 +83,7 @@ claude-3p --diagnose --json
 - 不捆绑 Anthropic 的应用本体。构建时从本机已安装的官方应用复制。
 - 不做远程分发。本地自签名只适合本机使用；分发给他人需要 Developer ID 签名和公证。
 - 上游每次更新都会重新压缩变量名。补丁器会在锚点不匹配时失败，不会静默产出坏包。
-- 补丁不绕过 managed `computerUseEnabled=false` 或 allowed-apps 不可读的 fail-closed；用户关闭 `chicagoEnabled` 时 Computer Use 仍然关闭。3P 上游本身把 HIPAA 视为 `unrestricted`；如果组织要求 3P 也强制 HIPAA，需要额外的逐次工具调用检查。
+- 补丁不绕过 managed `computerUseEnabled=false`、allowed-apps 不可读或 denied-apps 不可读的 fail-closed；用户关闭 `chicagoEnabled` 时 Computer Use 仍然关闭。3P 上游本身把 HIPAA 视为 `unrestricted`；如果组织要求 3P 也强制 HIPAA，需要额外的逐次工具调用检查。
 - 本地构建优先使用 `Claude-3p Signing` 自签名身份，保留 Virtualization 等非 team 限定 entitlements，去掉 Anthropic 的 team 标识。
 
 ## 目录

@@ -106,6 +106,14 @@ test("unreadable allowed-apps settings still turn Computer Use off", () => {
   const unreadable = patched({ eBr: true });
   assert.equal(unreadable.WP({ linkedCaller: "any" }), false);
   assert.equal(unreadable.GP(), false);
+  assert.notEqual(unreadable.Tsi("computerUseRollout").status, "supported");
+});
+
+test("unreadable denied-apps settings still turn Computer Use off", () => {
+  const unreadable = patched({ wzr: false });
+  assert.equal(unreadable.WP({ linkedCaller: "any" }), false);
+  assert.equal(unreadable.GP(), false);
+  assert.notEqual(unreadable.Tsi("computerUseRollout").status, "supported");
 });
 
 test("HIPAA remains a deny at the enabled gate when the harness reports it", () => {

@@ -87,6 +87,9 @@ for (const stale of ["enabled", "optedout"]) {
 for (const policySnippet of [
   'WP(e)&&Fy("chicagoEnabled")',
   '!Fy("chicagoEnabled")&&Fy("chicagoOffOverDefault")!==!0',
+  'if(!wzr())return!1;',
+  'if(!eBr()&&wzr())return{status:"supported"}',
+  'return{status:"unsupported",reason:"Computer use is off because its allowed-apps or denied-apps settings could not be read.',
 ]) {
   if (!mainJs.includes(policySnippet)) {
       throw new Error(`Computer Use policy check is missing: ${policySnippet}`);
