@@ -75,5 +75,6 @@ patches `ion-dist.asar` without forcing a locale:
 - installs the 51-entry dynamic catalog and official desktop `zh-Hans` shell;
 - leaves the built-in Language menu in control.
 
-The optional 4,068 hardcoded-string replacements are off by default because
-they scan all frontend JS files; set `CLAUDE_ZH_HARDCODED=1` to enable them.
+The hardcoded-string replacements are on by default. The build uses
+`rg -F -f` to preselect matching JS files and only applies the guarded
+replacement rules there; set `CLAUDE_ZH_HARDCODED=0` to skip this pass.

@@ -33,7 +33,9 @@ open "dist/Claude-3p.app" --args --3p
 - 3P 前端词表：37,495 条中文，7,784 条缺失 key 保留英文。
 - 动态词表：51/51。
 - 桌面壳词表：官方 `zh-Hans` 为基础。
-- 可选硬编码替换：`CLAUDE_ZH_HARDCODED=1` 构建时启用，默认关闭以避免长时间扫描。
+- 本地覆盖：`patches/zh-CN-overrides.json` 补齐 Computer Use 说明等高频漏译。
+- 硬编码替换默认启用：本次构建命中 457 个 JS 文件、3,821 处；需要关闭时使用
+  `CLAUDE_ZH_HARDCODED=0 ./scripts/build.sh`。
 - 资源来源：`javaht/claude-desktop-zh-cn`，MIT；见 `THIRD_PARTY_NOTICES.md`。
 
 新 bundle id 首次访问原版 “Claude Safe Storage” 时，macOS 会询问一次钥匙串权限；选择“始终允许”并输入登录密码即可继续使用原有网关密钥，不需要重新输入 API Key。此后使用同一签名身份重建不会重复询问。

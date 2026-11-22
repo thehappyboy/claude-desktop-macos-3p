@@ -28,7 +28,8 @@ function asarEntry(archive, wanted) {
     if (!node) return null;
   }
   if (node.files || node.unpacked) return null;
-  const start = 16 + headerSize + Number(node.offset || 0);
+  const padding = (4 - (headerSize % 4)) % 4;
+  const start = 16 + headerSize + padding + Number(node.offset || 0);
   return bytes.subarray(start, start + Number(node.size || 0));
 }
 
@@ -89,6 +90,9 @@ if (!shared || !shared.toString("utf8").includes('"zh-Hans"')) {
 }
 if (!existsSync(path.join(app, "Contents", "Resources", "zh-Hans.lproj", "Localizable.strings"))) {
   throw new Error("desktop zh-Hans Localizable.strings is missing");
+}
+if (!String(zh["f2RDZ/Il9s"] || "").startsWith("背景：")) {
+  throw new Error("zh-Hans Computer Use description override is missing");
 }
 
 for (const name of [

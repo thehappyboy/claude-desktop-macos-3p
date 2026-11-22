@@ -13,6 +13,6 @@ Coverage against Claude Desktop 6.6395.1's 3P frontend:
 - 51/51 dynamic entries
 - 1,201 desktop-shell entries (official `zh-Hans` is used as the base)
 
-The optional 4,068 hardcoded-string replacements are not applied by default
-because scanning all 5,720 frontend JS files is slow on first use. Set
-`CLAUDE_ZH_HARDCODED=1` to enable that pass.
+The 4,068 hardcoded-string replacements are applied by default. The build
+uses `rg` to preselect matching files; set `CLAUDE_ZH_HARDCODED=0` to skip
+the pass.
