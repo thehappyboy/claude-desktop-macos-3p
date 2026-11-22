@@ -17,7 +17,7 @@ Compared with `patrickjaja/claude-desktop-extra` and the macOS 3P fork note.
   `com.anthropic.claudefordesktop.3p` / `Claude-3p`.
 - `chicagoEnabled=true` and a selectable preferred mode are written to the 3P
   config, with a backup.
-- Simplified Chinese is registered in the 3P language whitelist with 37,495
+- Simplified Chinese is registered in the 3P language whitelist with 37,050
   translated frontend entries, 51 dynamic entries and the official desktop
   `zh-Hans` shell; missing entries fall back to English. The language remains
   user-selectable.

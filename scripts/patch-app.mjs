@@ -181,6 +181,32 @@ function patchOnce(source, id, pattern, replacement) {
   };
 }
 
+function functionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) return null;
+  let parens = 0;
+  let body = -1;
+  for (let i = source.indexOf("(", start); i < source.length; i += 1) {
+    if (source[i] === "(") parens += 1;
+    else if (source[i] === ")") {
+      parens -= 1;
+      if (parens === 0 && source[i + 1] === "{") {
+        body = i + 1;
+        break;
+      }
+    }
+  }
+  if (body < 0) return null;
+  let depth = 0;
+  for (let i = body; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    else if (source[i] === "}" && --depth === 0) {
+      return source.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 /**
  * Pure source transform. Kept exported for tests.
  *
@@ -189,10 +215,8 @@ function patchOnce(source, id, pattern, replacement) {
  * 3P on macOS; the user's chicagoEnabled switch, managed settings and allowed-
  * apps readability checks stay in front of it.
  *
- *   WP  - account/rollout/device-management gate used by computerUseRollout.
- *   GP  - isComputerUseEnabled, additionally requires the chicagoEnabled pref.
- *   iBr - "available but opted out", derived from WP and chicagoEnabled.
- *   Tsi - maps those gates to the feature status the 3P SPA reads.
+ *   6.6395.1 names: WP / GP / iBr / Tsi.
+ *   6.28899.6 names: xP / SP / gGr / uxi.
  */
 export function patchSource(source) {
   for (const stale of ["enabled", "optedout"]) {
@@ -205,11 +229,34 @@ export function patchSource(source) {
 
   let next = source;
   const applied = [];
+  const policyMatch = source.match(
+    /function [\w$]+\([\w$]+=\{\}\)\{if\(!([\w$]+)\(\)\|\|([\w$]+)\(\)\)return\s*!1;if\([\w$]+\(\)\)return\s*!0;[\s\S]{0,900}?!([\w$]+)\(\)\|\|process\.platform==="linux"/,
+  );
+  const managedFn = policyMatch?.[1];
+  const allowedFn = policyMatch?.[2] || "eBr";
+  const deniedFn = policyMatch?.[3] || "wzr";
+  let modeFn = managedFn
+    ? functionSource(source, managedFn)?.match(/&&([\w$]+)\(\)\.type==="3p"/)?.[1]
+    : null;
+  if (!modeFn) {
+    const candidates = [
+      ...new Set(
+        [...source.matchAll(/&&([\w$]+)\(\)\.type==="3p"/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    ];
+    if (candidates.length === 1) modeFn = candidates[0];
+  }
+  if (!modeFn) {
+    throw new Error(
+      "Could not identify the deployment-mode accessor used by Computer Use; re-audit the minified bundle.",
+    );
+  }
 
   // isComputerUseRolledOut: force the GrowthBook rollout part in 3P on macOS.
-  // uIr() (managed computerUseEnabled), eBr() (allowed-apps readability) and
-  // wzr() (denied-apps readability) still run first, so policy denials keep
-  // Computer Use off.
+  // The managed/device-management gate and allowed-apps readability still run
+  // first, and denied-apps readability is rechecked in the 3P branch.
   {
     const id = "rollout";
     const pattern =
@@ -217,7 +264,7 @@ export function patchSource(source) {
     const result = patchOnce(next, id, pattern, (whole, head, gate) => {
       return (
         `${head}/*${MARKER}_${id}*/${gate}` +
-        `if(process.platform==="darwin"&&K().type==="3p"){if(!wzr())return!1;return!0;}`
+        `if(process.platform==="darwin"&&${modeFn}().type==="3p"){if(!${deniedFn}())return!1;return!0;}`
       );
     });
     next = result.source;
@@ -233,8 +280,8 @@ export function patchSource(source) {
       /(function [\w$]+\([\w$]+\)\{)(if\(![\w$]+\(\)\)return [\w$]+\(\)\?\{status:["'`]unsupported["'`][\s\S]*?;)(?=let )/;
     const result = patchOnce(next, id, pattern, (whole, head, managedCheck) =>
       `${head}/*${MARKER}_${id}*/${managedCheck}` +
-      `if(process.platform==="darwin"&&K().type==="3p"){` +
-      `if(!eBr()&&wzr())return{status:"supported"};` +
+      `if(process.platform==="darwin"&&${modeFn}().type==="3p"){` +
+      `if(!${allowedFn}()&&${deniedFn}())return{status:"supported"};` +
       `return{status:"unsupported",reason:"Computer use is off because its allowed-apps or denied-apps settings could not be read. Restart the app to read them again.",unsupportedCode:"unknown"};}`,
     );
     next = result.source;
@@ -245,13 +292,21 @@ export function patchSource(source) {
   // Enable it on macOS 15+ in 3P so both the executor and the settings UI agree.
   {
     const id = "appscoped";
-    const pattern =
+    const oldPattern =
       /function ([\w$]+)\(([\w$]+)=\{\}\)\{let ([\w$]+)=\2\.requireFreshGrowthBook\?\?!0;if\(process\.platform!=="darwin"\)return!1;let ([\w$]+)=[\w$]+\(\);return \4\.major<15\|\|[\w$]+\(\4,[\w$]+\(\)\)\|\|\3&&![\w$]+\(\)\?!1:[\w$]+\([\w$]+,"appScopedEnabled",!1,[\w$]+\(\)\)\}/;
-    const result = patchOnce(next, id, pattern, (whole, fn, arg) =>
-      `function ${fn}(${arg}={}){/*${MARKER}_${id}*/` +
-      `if(process.platform==="darwin"&&K().type==="3p"){let n=Uk();if(n.major>=15&&!Vzr(n,Bzr()))return!0}` +
-      whole.replace(/^function [\w$]+\([\w$]+=\{\}\)\{/, ""),
-    );
+    const newPattern =
+      /function ([\w$]+)\(([\w$]+)=\{\}\)\{let ([\w$]+)=\2\.requireFreshGrowthBook\?\?!0,([\w$]+)=([\w$]+)\(\);return\s*!\(\4\.major<15\|\|([\w$]+)\(\4,([\w$]+)\(\)\)\|\|\3&&!([\w$]+)\(\)\|\|!([\w$]+)\(([\w$]+),"appScopedEnabled",!1,([\w$]+)\(\)\)\)\}/;
+    const useOld = new RegExp(oldPattern.source).test(next);
+    const result = patchOnce(next, id, useOld ? oldPattern : newPattern, (whole, fn, arg, fresh, majorVar, majorFn, ceilingFn, ceilingArgFn, freshFn, appScopedFn, appScopedConfig, defaultFn) => {
+      const guard = useOld
+        ? `let n=Uk();if(n.major>=15&&!Vzr(n,Bzr()))return!0`
+        : `let n=${majorFn}();if(n.major>=15&&!${ceilingFn}(n,${ceilingArgFn}()))return!0`;
+      return (
+        `function ${fn}(${arg}={}){/*${MARKER}_${id}*/` +
+        `if(process.platform==="darwin"&&${modeFn}().type==="3p"){${guard}}` +
+        whole.replace(/^function [\w$]+\([\w$]+=\{\}\)\{/, "")
+      );
+    });
     next = result.source;
     if (result.applied) applied.push(id);
   }

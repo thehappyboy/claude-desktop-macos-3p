@@ -7,14 +7,19 @@ const fixture = `
 function uIr(){return T.uIr}
 function eBr(){return T.eBr}
 function qzr(){return T.qzr}
+function mP(){return Xf()&&U().type==="3p"&&uIr()||uIr()}
+function fGr(){return eBr()}
+function U(){return T.mode}
+function Xf(){return true}
 function UP(){return T.fresh}
 function Eb(){return T.fresh}
 function wzr(){return T.wzr}
+function FWr(){return wzr()}
 function Xzr(){return T.rolloutEnabled}
 function Yzr(){return []}
 function Zzr(){return true}
 function X(){return true}
-function WP(e={}){if(!uIr()||eBr())return!1;if(qzr())return!0;let t=UP();if(!(e.requireFreshGrowthBook??!0?t:Eb())||!wzr()||process.platform==="linux"&&!X("3676943315")||process.platform==="win32"&&!X("40173473"))return!1;if(Xzr())return!0;if(e.linkedCaller===void 0)return!1;let n=Yzr();return(e.linkedCaller==="any"?n.length>0:n.includes(e.linkedCaller))&&Zzr?.()===!0}
+function WP(e={}){if(!mP()||fGr())return!1;if(qzr())return!0;let t=UP();if(!(e.requireFreshGrowthBook??!0?t:Eb())||!FWr()||process.platform==="linux"&&!X("3676943315")||process.platform==="win32"&&!X("40173473"))return!1;if(Xzr())return!0;if(e.linkedCaller===void 0)return!1;let n=Yzr();return(e.linkedCaller==="any"?n.length>0:n.includes(e.linkedCaller))&&Zzr?.()===!0}
 function nP(){return T.platform}
 function Gy(){return T.hipaa}
 function Fy(k){return T.prefs[k]}
@@ -31,7 +36,7 @@ function Mb(){return false}
 const HP="hp";
 function k(){return{}}
 function KP(e={}){let t=e.requireFreshGrowthBook??!0;if(process.platform!=="darwin")return!1;let n=Uk();return n.major<15||Vzr(n,Bzr())||t&&!UP()?!1:Mb(HP,"appScopedEnabled",!1,k())}
-function K(){return T.mode}
+function K(){return {text:"decoy"}}
 `;
 
 const base = {
@@ -80,6 +85,7 @@ test("patches only the rollout, status and app-scoped gates", () => {
   assert.match(source, /__macCu3P_appscoped/);
   assert.doesNotMatch(source, /__macCu3P_enabled/);
   assert.doesNotMatch(source, /__macCu3P_optedout/);
+  assert.match(source, /U\(\)\.type==="3p"/);
 });
 
 test("3P on macOS enables Computer Use and keeps the user-off state visible", () => {
@@ -158,8 +164,19 @@ test("rejects stale output from the old policy-bypassing patch", () => {
 
 test("fails closed when an anchor is missing", () => {
   const broken = fixture.replace(
-    "if(!uIr()||eBr())return!1;",
-    "if(!uIr())return!1;",
+    "if(!mP()||fGr())return!1;",
+    "if(!mP())return!1;",
   );
   assert.throws(() => patchSource(broken), /expected exactly one anchor/);
+});
+
+test("fails closed when the deployment-mode accessor cannot be identified", () => {
+  const broken = fixture.replace(
+    "function mP(){return Xf()&&U().type===\"3p\"&&uIr()||uIr()}",
+    "function mP(){return uIr()}",
+  );
+  assert.throws(
+    () => patchSource(broken),
+    /Could not identify the deployment-mode accessor/,
+  );
 });

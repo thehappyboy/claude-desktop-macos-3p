@@ -17,11 +17,20 @@ const framework = path.join(
   "A",
   "Electron Framework",
 );
+const asarCache = new Map();
 
-function asarEntry(archive, wanted) {
+function asarData(archive) {
+  if (asarCache.has(archive)) return asarCache.get(archive);
   const bytes = readFileSync(archive);
   const headerSize = bytes.readUInt32LE(12);
   const header = JSON.parse(bytes.subarray(16, 16 + headerSize).toString("utf8"));
+  const data = { bytes, headerSize, header };
+  asarCache.set(archive, data);
+  return data;
+}
+
+function asarEntry(archive, wanted) {
+  const { bytes, headerSize, header } = asarData(archive);
   let node = header;
   for (const part of wanted.split("/")) {
     node = node?.files?.[part];
@@ -31,6 +40,20 @@ function asarEntry(archive, wanted) {
   const padding = (4 - (headerSize % 4)) % 4;
   const start = 16 + headerSize + padding + Number(node.offset || 0);
   return bytes.subarray(start, start + Number(node.size || 0));
+}
+
+function asarFileNames(archive) {
+  const { header } = asarData(archive);
+  const names = [];
+  function walk(node, prefix) {
+    for (const [name, child] of Object.entries(node.files || {})) {
+      const full = prefix ? `${prefix}/${name}` : name;
+      if (child.files) walk(child, full);
+      else names.push(full);
+    }
+  }
+  walk(header, "");
+  return names;
 }
 
 const bytes = readFileSync(asarPath);
@@ -69,9 +92,19 @@ if (existsSync(path.join(app, "Contents", "embedded.provisionprofile"))) {
   throw new Error("stale embedded.provisionprofile is still present");
 }
 
-const mainChunk = asarEntry(asarPath, ".vite/build/index.chunk-CEv0BLqc.js");
+const mainCandidates = asarFileNames(asarPath).filter((name) =>
+  /^\.vite\/build\/index.*\.js$/.test(name),
+);
+let mainChunk = null;
+for (const name of mainCandidates) {
+  const content = asarEntry(asarPath, name);
+  if (content?.toString("utf8").includes(`__macCu3P_rollout`)) {
+    mainChunk = content;
+    break;
+  }
+}
 if (!mainChunk) {
-  throw new Error("app.asar is missing the Computer Use main chunk");
+  throw new Error("app.asar is missing the patched Computer Use main chunk");
 }
 const mainJs = mainChunk.toString("utf8");
 for (const marker of ["rollout", "status", "appscoped"]) {
@@ -84,15 +117,18 @@ for (const stale of ["enabled", "optedout"]) {
       throw new Error(`stale policy-bypassing Computer Use patch marker: ${stale}`);
   }
 }
-for (const policySnippet of [
-  'WP(e)&&Fy("chicagoEnabled")',
-  '!Fy("chicagoEnabled")&&Fy("chicagoOffOverDefault")!==!0',
-  'if(!wzr())return!1;',
-  'if(!eBr()&&wzr())return{status:"supported"}',
-  'return{status:"unsupported",reason:"Computer use is off because its allowed-apps or denied-apps settings could not be read.',
+for (const [label, pattern] of [
+  ["enabled preference", /[\w$]+\(e\)&&[\w$]+\("chicagoEnabled"\)/],
+  ["opt-out state", /![\w$]+\("chicagoEnabled"\)&&[\w$]+\("chicagoOffOverDefault"\)!==!0/],
+  ["denied-apps guard", /if\(![\w$]+\(\)\)return!1;/],
+  ["status policy gate", /if\(![\w$]+\(\)&&[\w$]+\(\)\)return\{status:"supported"\}/],
+  [
+    "status fail closed",
+    /return\{status:"unsupported",reason:"Computer use is off because its allowed-apps or denied-apps settings could not be read\./,
+  ],
 ]) {
-  if (!mainJs.includes(policySnippet)) {
-      throw new Error(`Computer Use policy check is missing: ${policySnippet}`);
+  if (!pattern.test(mainJs)) {
+    throw new Error(`Computer Use policy check is missing: ${label}`);
   }
 }
 
@@ -111,8 +147,10 @@ const dynamicZh = JSON.parse(
 if (Object.keys(dynamicZh).length < 1) {
   throw new Error("ion-dist dynamic zh-Hans catalog is empty");
 }
-const shared = asarEntry(ionAsarPath, "assets/v1/shared-153-BdmJCTc6.js");
-if (!shared || !shared.toString("utf8").includes('"zh-Hans"')) {
+const hasZhHansWhitelist = asarFileNames(ionAsarPath)
+  .filter((name) => /^assets\/v1\/.*\.js$/.test(name))
+  .some((name) => asarEntry(ionAsarPath, name)?.toString("utf8").includes('"zh-Hans"'));
+if (!hasZhHansWhitelist) {
   throw new Error("ion-dist language whitelist does not include zh-Hans");
 }
 if (!existsSync(path.join(app, "Contents", "Resources", "zh-Hans.lproj", "Localizable.strings"))) {

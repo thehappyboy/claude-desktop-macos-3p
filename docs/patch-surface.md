@@ -1,25 +1,30 @@
 # Patch surface
 
-Target: macOS Claude Desktop `6.6395.1`, output bundle
+Validated target: macOS Claude Desktop `6.28899.6`, output bundle
 `com.anthropic.claudefordesktop.3p` / display name `Claude-3p`.
 `CFBundleName` stays `Claude` because Electron locates its helper apps by that
 name; changing it requires renaming every `Claude Helper*.app`.
 
 The macOS native Computer Use executor is already shipped. The patch does not
 replace it. It changes three minified functions in
-`.vite/build/index.chunk-CEv0BLqc.js`:
+`.vite/build/index.chunk-nq69RXOm.js`:
 
 | Gate | Upstream behavior | Patched behavior in 3P |
 |---|---|---|
-| rollout | GrowthBook/account rollout can leave `computerUseRollout` unavailable | force the rollout answer on darwin + 3p after the managed `computerUseEnabled`, allowed-apps and denied-apps checks |
-| status mapper | Maps the gates to the SPA feature status | return `supported` on darwin + 3p only when the allowed-apps and denied-apps policy readers are readable |
-| app-scoped mode | Requires GrowthBook `appScopedEnabled` | enabled on macOS 15+ in 3P |
+| rollout (`xP`) | GrowthBook/account rollout can leave `computerUseRollout` unavailable | force the rollout answer on darwin + 3p after the managed `computerUseEnabled` and allowed-apps checks, then recheck denied-apps readability |
+| status mapper (`uxi`) | Maps the gates to the SPA feature status | return `supported` on darwin + 3p only when the allowed-apps and denied-apps policy readers are readable |
+| app-scoped mode (`CP`) | Requires GrowthBook `appScopedEnabled` | enabled on macOS 15+ in 3P |
 
-`isComputerUseEnabled` (`GP`) and `isComputerUseAvailableButOptedOut` (`iBr`) are
-not replaced. They continue to require `chicagoEnabled`; the settings UI sees
-the opt-out state instead of a forced-on state. The managed
-`computerUseEnabled=false`, unreadable allowed-apps and unreadable denied-apps
-policies remain in front of the forced rollout.
+The deployment-mode accessor is discovered from the upstream managed gate
+(`mP()` in 6.28899.6, which calls `U().type === "3p"`). It must not be
+hardcoded: in this release `K()` is an unrelated text helper. The patch fails
+the build if the accessor cannot be identified.
+
+`isComputerUseEnabled` (`SP`) and `isComputerUseAvailableButOptedOut` (`gGr`)
+are not replaced. They continue to require `chicagoEnabled`; the settings UI
+sees the opt-out state instead of a forced-on state. The managed
+`computerUseEnabled=false`, unreadable allowed-apps (`fGr`) and unreadable
+denied-apps (`FWr`) policies remain in front of the forced rollout.
 
 Upstream's 3P deployment treats the Cowork HIPAA gate as `unrestricted`. This
 patch neither changes nor strengthens that upstream decision; an organization
@@ -29,10 +34,10 @@ Observed startup line after the patch:
 
 ```text
 [custom-3p] 3P mode active { provider: 'gateway' }
-[chicago] GrowthBook chicago_config: raw=undefined → enabled=true ...
+[chicago] GrowthBook chicago_config: raw=undefined → enabled=true ... appScoped=true
 ```
 
-Here `enabled` is the rollout gate (`WP()`), not the user's `chicagoEnabled`
+Here `enabled` is the rollout gate (`xP()`), not the user's `chicagoEnabled`
 preference. The separate preference check remains authoritative.
 Before the patch the same line had `enabled=false`.
 
@@ -81,7 +86,7 @@ The build vendors the MIT-licensed `javaht/claude-desktop-zh-cn` resources and
 patches `ion-dist.asar` without forcing a locale:
 
 - adds `zh-Hans` to the frontend language whitelist;
-- merges 37,495 translated frontend entries (7,784 fall back to English);
+- merges 37,050 translated frontend entries (9,007 fall back to English);
 - installs the 51-entry dynamic catalog and official desktop `zh-Hans` shell;
 - leaves the built-in Language menu in control.
 

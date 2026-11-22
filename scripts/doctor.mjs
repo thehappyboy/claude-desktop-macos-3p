@@ -274,6 +274,32 @@ if (existsSync(configPath)) {
       if (applied && existsSync(applied)) {
         const c = JSON.parse(readFileSync(applied, "utf8"));
         pass("inference provider", c.inferenceProvider || "<unset>");
+        if (c.inferenceProvider === "gateway") {
+          const base = typeof c.inferenceGatewayBaseUrl === "string"
+            ? c.inferenceGatewayBaseUrl.trim()
+            : "";
+          if (!base) {
+            warn("gateway endpoint", "inferenceGatewayBaseUrl is missing");
+          } else {
+            const endpoint = `${base.replace(/\/+$/, "")}/v1/models`;
+            const probe = spawnSync("/usr/bin/curl", [
+              "-sS",
+              "-m",
+              "5",
+              "-o",
+              "/dev/null",
+              "-w",
+              "%{http_code}",
+              endpoint,
+            ], { encoding: "utf8" });
+            const code = Number(String(probe.stdout || "").trim());
+            if (!probe.error && probe.status === 0 && code > 0) {
+              pass("gateway endpoint", `${base} reachable (HTTP ${code})`);
+            } else {
+              warn("gateway endpoint", `${base} unreachable; check the configured port and gateway process`);
+            }
+          }
+        }
         if (c.disableAutoUpdates === true) {
           pass("auto-updates", "disabled (disableAutoUpdates=true)");
         } else {
