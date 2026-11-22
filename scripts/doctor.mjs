@@ -5,14 +5,20 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-const args = { app: "/Applications/Claude-3p.app", profile: "Claude-3p", json: false };
+const args = {
+  app: "/Applications/Claude-3p.app",
+  profile: "Claude-3p",
+  sourceApp: "/Applications/Claude.app",
+  json: false,
+};
 for (let i = 2; i < process.argv.length; i += 1) {
   const arg = process.argv[i];
   if (arg === "--app") args.app = process.argv[++i];
   else if (arg === "--profile") args.profile = process.argv[++i];
+  else if (arg === "--source-app") args.sourceApp = process.argv[++i];
   else if (arg === "--json") args.json = true;
   else if (arg === "-h" || arg === "--help") {
-    console.log("Usage: node scripts/doctor.mjs [--app /Applications/Claude-3p.app] [--profile Claude-3p] [--json]");
+    console.log("Usage: node scripts/doctor.mjs [--app /Applications/Claude-3p.app] [--source-app /Applications/Claude.app] [--profile Claude-3p] [--json]");
     process.exit(0);
   } else {
     throw new Error(`Unknown argument: ${arg}`);
@@ -20,6 +26,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
 }
 
 const app = path.resolve(args.app);
+const sourceApp = path.resolve(args.sourceApp);
 const checks = [];
 function check(name, status, detail) {
   checks.push({ name, status, detail });
@@ -56,6 +63,17 @@ function lastMatch(text, re) {
   for (const m of text.matchAll(re)) found = m;
   return found;
 }
+function tccAuth(service, client) {
+  const db = "/Library/Application Support/com.apple.TCC/TCC.db";
+  if (!existsSync(db)) return null;
+  const out = run("/usr/bin/sqlite3", [
+    db,
+    `select auth_value from access where service='${service}' and client='${client}' order by last_modified desc limit 1;`,
+  ]);
+  if (out === null || out === "") return null;
+  const value = Number(out);
+  return Number.isInteger(value) ? value : null;
+}
 
 const infoPlist = path.join(app, "Contents", "Info.plist");
 const asarPath = path.join(app, "Contents", "Resources", "app.asar");
@@ -91,6 +109,23 @@ if (info) {
   } else {
     warn("bundle name", `got ${info.CFBundleName || "<missing>"}`);
   }
+}
+
+const sourceInfoPath = path.join(sourceApp, "Contents", "Info.plist");
+if (existsSync(sourceInfoPath)) {
+  const sourceInfo = plist(sourceInfoPath);
+  const builtVersion = info?.CFBundleShortVersionString;
+  const sourceVersion = sourceInfo?.CFBundleShortVersionString;
+  if (sourceVersion && builtVersion && sourceVersion === builtVersion) {
+    pass("upstream source", `${sourceApp} (${sourceVersion})`);
+  } else {
+    warn(
+      "upstream source",
+      `${sourceApp} is ${sourceVersion || "<unknown>"}, built app is ${builtVersion || "<unknown>"}; rebuild from the current official app`,
+    );
+  }
+} else {
+  warn("upstream source", `official app not found: ${sourceApp}`);
 }
 
 if (existsSync(ionAsar)) {
@@ -131,7 +166,7 @@ if (!signature) {
   const authority = signature.match(/^Authority=(.+)$/m)?.[1];
   if (identifier === "com.anthropic.claudefordesktop.3p") pass("signature id", identifier);
   else fail("signature id", identifier || "missing");
-  if (authority === "Claude 3P CU Local Signing") pass("signature identity", authority);
+  if (authority === "Claude-3p Signing") pass("signature identity", authority);
   else if (signature.includes("Signature=adhoc")) warn("signature identity", "ad-hoc; TCC may reset after rebuild");
   else warn("signature identity", authority || "unknown");
   const verify = run("codesign", ["--verify", "--deep", "--strict", app]);
@@ -219,7 +254,19 @@ if (existsSync(configPath)) {
       if (applied && existsSync(applied)) {
         const c = JSON.parse(readFileSync(applied, "utf8"));
         pass("inference provider", c.inferenceProvider || "<unset>");
+        if (c.disableAutoUpdates === true) {
+          pass("auto-updates", "disabled (disableAutoUpdates=true)");
+        } else {
+          warn(
+            "auto-updates",
+            `disableAutoUpdates=${String(c.disableAutoUpdates ?? "<missing>")}; a new or updated config can replace the patched app`,
+          );
+        }
+      } else {
+        warn("auto-updates", "applied 3P config not found; cannot verify disableAutoUpdates");
       }
+    } else {
+      warn("auto-updates", "configLibrary/_meta.json not found; cannot verify disableAutoUpdates");
     }
   } catch (e) {
     fail("3P config", e.message);
@@ -233,10 +280,10 @@ const chicago = lastMatch(main, /\[chicago\][^\n]*enabled=(true|false)[^\n]*appS
 if (chicago) {
   const enabled = chicago[1];
   const appScoped = chicago[2];
-  if (enabled === "true") pass("CU runtime gate", `enabled=true appScoped=${appScoped}`);
-  else fail("CU runtime gate", `enabled=${enabled} appScoped=${appScoped}`);
+  if (enabled === "true") pass("Computer Use rollout gate", `rollout=true appScoped=${appScoped}`);
+  else fail("Computer Use rollout gate", `rollout=${enabled} appScoped=${appScoped}`);
 } else {
-  warn("CU runtime gate", "no [chicago] line in recent main.log");
+  warn("Computer Use rollout gate", "no [chicago] line in recent main.log");
 }
 const threeP = lastMatch(main, /3P mode active \{ provider: '([^']+)' \}/g);
 if (threeP) pass("3P runtime", `provider=${threeP[1]}`);
@@ -258,17 +305,34 @@ else warn("workspace VM", "no recent startup-complete line");
 if (/Virtualization not available|entitlement_missing/i.test(vm)) fail("workspace VM entitlement", "entitlement missing");
 
 const swift = tail(swiftLog);
-const a11y = lastMatch(swift, /\[Hotkey\][^\n]*Accessibility permissions detected|\[Hotkey\][^\n]*No accessibility permissions/g);
-if (a11y) {
-  if (a11y[0].includes("detected")) pass("accessibility", "granted (from app log)");
-  else warn("accessibility", "not granted (from app log)");
+const bundleId = info?.CFBundleIdentifier || "com.anthropic.claudefordesktop.3p";
+const a11yTcc = tccAuth("kTCCServiceAccessibility", bundleId);
+if (a11yTcc === 2) {
+  pass("accessibility", "granted (TCC)");
+} else if (a11yTcc === 0) {
+  warn("accessibility", "denied (TCC); grant it in System Settings");
 } else {
-  warn("accessibility", "no status in app log");
+  const a11y = lastMatch(
+    swift,
+    /\[Hotkey\][^\n]*Accessibility permissions detected|\[Hotkey\][^\n]*No accessibility permissions/g,
+  );
+  if (a11y) {
+    if (a11y[0].includes("detected")) pass("accessibility", "granted (from app log; TCC unreadable)");
+    else warn("accessibility", "not granted (from app log; TCC unreadable)");
+  } else {
+    warn("accessibility", "not in TCC and no status in app log");
+  }
 }
-if (/screen recording|ScreenCapture|screen recording permissions/i.test(main)) {
-  pass("screen recording", "status found in app log");
+
+const screenTcc = tccAuth("kTCCServiceScreenCapture", bundleId);
+if (screenTcc === 2) {
+  pass("screen recording", "granted (TCC)");
+} else if (screenTcc === 0) {
+  warn("screen recording", "denied (TCC); grant it in System Settings");
+} else if (/screen recording|ScreenCapture|screen recording permissions/i.test(main)) {
+  pass("screen recording", "status found in app log (TCC unreadable)");
 } else {
-  warn("screen recording", "not reported by app log; check System Settings");
+  warn("screen recording", "not in TCC and not reported by app log");
 }
 
 const fails = checks.filter((c) => c.status === "FAIL").length;

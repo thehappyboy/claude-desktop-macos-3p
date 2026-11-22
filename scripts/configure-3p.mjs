@@ -51,6 +51,49 @@ function main() {
   console.log(`[configure] ${config}`);
   console.log(`[configure] chicagoEnabled=true chicagoPreferredMode=${args.mode}`);
   console.log(`[configure] backup ${backup}`);
+
+  // The 3P SPA keeps its applied inference profile in configLibrary, not in
+  // claude_desktop_config.json. disableAutoUpdates must be written there or a
+  // fresh profile can replace the signed/patched app on the next update.
+  const configLibrary = path.join(path.dirname(config), "configLibrary");
+  const metaPath = path.join(configLibrary, "_meta.json");
+  if (!existsSync(metaPath)) {
+    console.warn(
+      `[configure] ${metaPath} not found; launch Claude-3p once, then rerun this command to disable auto-updates`,
+    );
+    return;
+  }
+
+  let meta;
+  try {
+    meta = JSON.parse(readFileSync(metaPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read ${metaPath}: ${error.message}`);
+  }
+  const appliedId = typeof meta.appliedId === "string" ? meta.appliedId : "";
+  if (!appliedId) {
+    throw new Error(`No appliedId in ${metaPath}; cannot locate the applied 3P config`);
+  }
+  const appliedConfig = path.join(configLibrary, `${appliedId}.json`);
+  if (!existsSync(appliedConfig)) {
+    throw new Error(`Applied 3P config not found: ${appliedConfig}`);
+  }
+
+  const appliedBackup = `${appliedConfig}.bak-${stamp}`;
+  const appliedBytes = readFileSync(appliedConfig);
+  writeFileSync(appliedBackup, appliedBytes, { mode: 0o600 });
+  let applied;
+  try {
+    applied = JSON.parse(appliedBytes.toString("utf8"));
+  } catch (error) {
+    throw new Error(`Could not parse ${appliedConfig}: ${error.message}`);
+  }
+  applied.disableAutoUpdates = true;
+  writeFileSync(appliedConfig, `${JSON.stringify(applied, null, 2)}\n`, { mode: 0o600 });
+  execFileSync("/bin/chmod", ["600", appliedConfig]);
+  console.log(`[configure] ${appliedConfig}`);
+  console.log("[configure] disableAutoUpdates=true");
+  console.log(`[configure] backup ${appliedBackup}`);
 }
 
 try {

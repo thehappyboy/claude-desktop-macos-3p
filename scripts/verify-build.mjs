@@ -69,6 +69,30 @@ if (existsSync(path.join(app, "Contents", "embedded.provisionprofile"))) {
   throw new Error("stale embedded.provisionprofile is still present");
 }
 
+const mainChunk = asarEntry(asarPath, ".vite/build/index.chunk-CEv0BLqc.js");
+if (!mainChunk) {
+  throw new Error("app.asar is missing the Computer Use main chunk");
+}
+const mainJs = mainChunk.toString("utf8");
+for (const marker of ["rollout", "status", "appscoped"]) {
+  if (!mainJs.includes(`__macCu3P_${marker}`)) {
+      throw new Error(`missing Computer Use patch marker: ${marker}`);
+  }
+}
+for (const stale of ["enabled", "optedout"]) {
+  if (mainJs.includes(`__macCu3P_${stale}`)) {
+      throw new Error(`stale policy-bypassing Computer Use patch marker: ${stale}`);
+  }
+}
+for (const policySnippet of [
+  'WP(e)&&Fy("chicagoEnabled")',
+  '!Fy("chicagoEnabled")&&Fy("chicagoOffOverDefault")!==!0',
+]) {
+  if (!mainJs.includes(policySnippet)) {
+      throw new Error(`Computer Use policy check is missing: ${policySnippet}`);
+  }
+}
+
 for (const entry of ["i18n/zh-Hans.json", "i18n/dynamic/zh-Hans.json"]) {
   if (!asarEntry(ionAsarPath, entry)) {
     throw new Error(`ion-dist.asar is missing ${entry}`);
@@ -163,4 +187,5 @@ console.log(`asar header: ${headerHash}`);
 console.log(`dictionary: ${digest}`);
 console.log("virtualization entitlement: present");
 console.log(`bundle: ${plist.CFBundleIdentifier} / ${plist.CFBundleDisplayName}`);
+console.log("Computer Use policy checks: preserved");
 console.log(`i18n: zh-Hans (${Object.keys(zh).length} frontend entries, ${Object.keys(dynamicZh).length} dynamic entries)`);

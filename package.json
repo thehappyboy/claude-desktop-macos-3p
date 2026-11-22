@@ -1,9 +1,9 @@
 {
-  "name": "claude-desktop-macos-3p-cu",
+  "name": "claude-desktop-macos-3p",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Build a macOS Claude Desktop 3P app with Computer Use enabled.",
+  "description": "Build a macOS Claude Desktop 3P branch with Simplified Chinese, Computer Use and local diagnostics.",
   "scripts": {
     "patch": "node scripts/patch-app.mjs",
     "setup-signing": "./scripts/setup-signing.sh",

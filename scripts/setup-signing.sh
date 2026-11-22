@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-KEYCHAIN="$HOME/Library/Keychains/Claude-3p-CU.keychain-db"
-STATE_DIR="$HOME/Library/Application Support/Claude-3p-CU"
+KEYCHAIN="$HOME/Library/Keychains/Claude-3p-Signing.keychain-db"
+STATE_DIR="$HOME/Library/Application Support/Claude-3p-Signing"
 PASS_FILE="$STATE_DIR/signing-password"
-IDENTITY="Claude 3P CU Local Signing"
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/claude-3p-cu-sign.XXXXXX")"
+IDENTITY="Claude-3p Signing"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/claude-3p-sign.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$STATE_DIR"
@@ -28,7 +28,7 @@ openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
   -addext "keyUsage=critical,digitalSignature" \
   -addext "extendedKeyUsage=codeSigning" \
   -addext "basicConstraints=critical,CA:FALSE" >/dev/null 2>&1
-openssl pkcs12 -export -legacy \
+openssl pkcs12 -export \
   -out "$TMP/identity.p12" -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
   -passout "pass:$PASS" >/dev/null 2>&1
 

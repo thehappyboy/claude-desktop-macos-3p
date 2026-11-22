@@ -6,16 +6,24 @@ Target: macOS Claude Desktop `6.6395.1`, output bundle
 name; changing it requires renaming every `Claude Helper*.app`.
 
 The macOS native Computer Use executor is already shipped. The patch does not
-replace it. It changes four minified functions in
+replace it. It changes three minified functions in
 `.vite/build/index.chunk-CEv0BLqc.js`:
 
 | Gate | Upstream behavior | Patched behavior in 3P |
 |---|---|---|
-| rollout | GrowthBook/account rollout can leave `computerUseRollout` unavailable | `supported` on darwin + 3p |
-| enabled | Requires rollout, allowed-apps readability and `chicagoEnabled` | `true` on darwin + 3p; HIPAA still returns false upstream |
-| opted-out | Reports "available but opted out" when the preference is unset | `false` on darwin + 3p |
-| status mapper | Maps the gates to the SPA feature status | `supported` on darwin + 3p |
+| rollout | GrowthBook/account rollout can leave `computerUseRollout` unavailable | force the rollout answer on darwin + 3p after the managed `computerUseEnabled` and allowed-apps checks |
+| status mapper | Maps the gates to the SPA feature status | return `supported` on darwin + 3p after the managed-settings failure branch |
 | app-scoped mode | Requires GrowthBook `appScopedEnabled` | enabled on macOS 15+ in 3P |
+
+`isComputerUseEnabled` (`GP`) and `isComputerUseAvailableButOptedOut` (`iBr`) are
+not replaced. They continue to require `chicagoEnabled`; the settings UI sees
+the opt-out state instead of a forced-on state. The managed
+`computerUseEnabled=false` and unreadable allowed-apps policies remain in front
+of the forced rollout.
+
+Upstream's 3P deployment treats the Cowork HIPAA gate as `unrestricted`. This
+patch neither changes nor strengthens that upstream decision; an organization
+that needs HIPAA enforcement in 3P requires a separate per-tool-call check.
 
 Observed startup line after the patch:
 
@@ -24,6 +32,8 @@ Observed startup line after the patch:
 [chicago] GrowthBook chicago_config: raw=undefined → enabled=true ...
 ```
 
+Here `enabled` is the rollout gate (`WP()`), not the user's `chicagoEnabled`
+preference. The separate preference check remains authoritative.
 Before the patch the same line had `enabled=false`.
 
 ## Integrity
@@ -55,7 +65,7 @@ workspace VM reports `entitlement_missing` and shows "Claude's installation
 appears to be invalid or has been modified."
 
 `scripts/setup-signing.sh` creates a local self-signed identity
-`Claude 3P CU Local Signing` in `Claude-3p-CU.keychain-db`. The build uses it
+`Claude-3p Signing` in `Claude-3p-Signing.keychain-db`. The build uses it
 when present and falls back to ad-hoc otherwise. A stable identity avoids a
 new TCC grant after every rebuild.
 

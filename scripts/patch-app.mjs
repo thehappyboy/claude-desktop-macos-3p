@@ -185,67 +185,55 @@ function patchOnce(source, id, pattern, replacement) {
  * Pure source transform. Kept exported for tests.
  *
  * The macOS native Computer Use executor is present upstream. In 3P mode the
- * feature is hidden by three runtime gates:
+ * feature is hidden by the GrowthBook rollout gate. We force only that gate in
+ * 3P on macOS; the user's chicagoEnabled switch, managed settings and allowed-
+ * apps readability checks stay in front of it.
+ *
  *   WP  - account/rollout/device-management gate used by computerUseRollout.
  *   GP  - isComputerUseEnabled, additionally requires the chicagoEnabled pref.
- *   iBr - "available but opted out", which would contradict the forced state.
- * Tsi maps those gates to the feature status the 3P SPA reads.
+ *   iBr - "available but opted out", derived from WP and chicagoEnabled.
+ *   Tsi - maps those gates to the feature status the 3P SPA reads.
  */
 export function patchSource(source) {
+  for (const stale of ["enabled", "optedout"]) {
+    if (source.includes(`${MARKER}_${stale}`)) {
+      throw new Error(
+        `Stale ${stale} patch found; rebuild from the official Claude.app instead of patching an older output.`,
+      );
+    }
+  }
+
   let next = source;
   const applied = [];
 
-  // isComputerUseRolledOut: force supported in 3P on macOS. Keep HIPAA.
+  // isComputerUseRolledOut: force the GrowthBook rollout part in 3P on macOS.
+  // uIr() (managed computerUseEnabled) and eBr() (allowed-apps readability)
+  // still run first, so policy denials keep Computer Use off.
   {
     const id = "rollout";
     const pattern =
-      /function ([\w$]+)\(([\w$]+)=\{\}\)\{if\(![\w$]+\(\)\|\|[\w$]+\(\)\)return\s*!1;if\([\w$]+\(\)\)return\s*!0;/;
-    const result = patchOnce(next, id, pattern, (whole, fn, arg) =>
-      `function ${fn}(${arg}={}){/*${MARKER}_${id}*/` +
-      `if(process.platform==="darwin"&&K().type==="3p")return!0;` +
-      whole.replace(/^function [\w$]+\([\w$]+=\{\}\)\{/, ""),
-    );
-    next = result.source;
-    if (result.applied) applied.push(id);
-  }
-
-  // isComputerUseEnabled: force on in 3P on macOS. HIPAA still wins.
-  {
-    const id = "enabled";
-    const pattern =
-      /function ([\w$]+)\(([\w$]+)=\{\}\)\{return\s*![\w$]+\(\)\|\|![\w$]+\(\)\|\|[\w$]+\(\)\|\|[\w$]+\(\)\?!1:[\w$]+\(\2\)&&[\w$]+\(["'`]chicagoEnabled["'`]\)\}/;
-    const result = patchOnce(next, id, pattern, (whole, fn, arg) =>
-      `function ${fn}(${arg}={}){/*${MARKER}_${id}*/` +
-      `if(process.platform==="darwin"&&K().type==="3p")return!0;` +
-      whole.replace(/^function [\w$]+\([\w$]+=\{\}\)\{/, ""),
-    );
-    next = result.source;
-    if (result.applied) applied.push(id);
-  }
-
-  // isComputerUseAvailableButOptedOut: not true when 3P forces it on.
-  {
-    const id = "optedout";
-    const pattern =
-      /function ([\w$]+)\(([\w$]+)=\{\}\)\{return\s*[\w$]+\(\)&&[\w$]+\(\2\)&&![\w$]+\(["'`]chicagoEnabled["'`]\)&&[\w$]+\(["'`]chicagoOffOverDefault["'`]\)!==!0\}/;
-    const result = patchOnce(next, id, pattern, (whole, fn, arg) =>
-      `function ${fn}(${arg}={}){/*${MARKER}_${id}*/` +
-      `if(process.platform==="darwin"&&K().type==="3p")return!1;` +
-      whole.replace(/^function [\w$]+\([\w$]+=\{\}\)\{/, ""),
-    );
+      /(function [\w$]+\([\w$]+=\{\}\)\{if\(![\w$]+\(\)\|\|[\w$]+\(\)\)return\s*!1;)(if\([\w$]+\(\)\)return\s*!0;)/;
+    const result = patchOnce(next, id, pattern, (whole, head, gate) => {
+      const forced = gate.replace(
+        /\)return\s*!0;/,
+        `||(process.platform==="darwin"&&K().type==="3p"))return!0;`,
+      );
+      return `${head}/*${MARKER}_${id}*/${forced}`;
+    });
     next = result.source;
     if (result.applied) applied.push(id);
   }
 
   // Tsi: feature-status mapper for computerUseRollout / computerUseLocal.
+  // Keep its managed-settings failure branch; only replace the GrowthBook
+  // rollout answer after that branch has run.
   {
     const id = "status";
     const pattern =
-      /(function ([\w$]+)\([\w$]+\)\{)if\(![\w$]+\(\)\)return [\w$]+\(\)\?\{status:["'`]unsupported["'`]/;
-    const result = patchOnce(next, id, pattern, (whole, head) =>
-      `${head}/*${MARKER}_${id}*/` +
-      `if(process.platform==="darwin"&&K().type==="3p")return{status:"supported"};` +
-      whole.slice(head.length),
+      /(function [\w$]+\([\w$]+\)\{)(if\(![\w$]+\(\)\)return [\w$]+\(\)\?\{status:["'`]unsupported["'`][\s\S]*?;)(?=let )/;
+    const result = patchOnce(next, id, pattern, (whole, head, managedCheck) =>
+      `${head}/*${MARKER}_${id}*/${managedCheck}` +
+      `if(process.platform==="darwin"&&K().type==="3p")return{status:"supported"};`,
     );
     next = result.source;
     if (result.applied) applied.push(id);
@@ -331,13 +319,13 @@ function detectSigningIdentity(requested) {
     process.env.HOME || "",
     "Library",
     "Keychains",
-    "Claude-3p-CU.keychain-db",
+    "Claude-3p-Signing.keychain-db",
   );
   const passFile = path.join(
     process.env.HOME || "",
     "Library",
     "Application Support",
-    "Claude-3p-CU",
+    "Claude-3p-Signing",
     "signing-password",
   );
   if (existsSync(keychain) && existsSync(passFile)) {
@@ -353,8 +341,8 @@ function detectSigningIdentity(requested) {
   const out = execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], {
     encoding: "utf8",
   });
-  return out.includes("Claude 3P CU Local Signing")
-    ? "Claude 3P CU Local Signing"
+  return out.includes("Claude-3p Signing")
+    ? "Claude-3p Signing"
     : "-";
 }
 
@@ -532,7 +520,7 @@ function main() {
       );
     }
     const ids = new Set(hits.flatMap((hit) => hit.patches));
-    for (const required of ["rollout", "enabled", "optedout", "status"]) {
+    for (const required of ["rollout", "status", "appscoped"]) {
       if (!ids.has(required)) {
         throw new Error(`Required patch did not apply: ${required}`);
       }
